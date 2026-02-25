@@ -205,6 +205,45 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
                         font-size: 0.8rem !important;
                     }
 
+                    /* === Add button: always visible === */
+                    #addBtn, .btn-primary {
+                        display: inline-flex !important;
+                        visibility: visible !important;
+                        opacity: 1 !important;
+                        white-space: nowrap !important;
+                    }
+
+                    /* === Header actions: wrap properly === */
+                    .header-actions {
+                        display: flex !important;
+                        flex-wrap: wrap !important;
+                        gap: 0.5rem !important;
+                        width: 100% !important;
+                        align-items: center !important;
+                    }
+                    .search-box {
+                        min-width: 0 !important;
+                        flex: 1 1 100% !important;
+                    }
+                    .filter-select {
+                        flex: 0 0 auto !important;
+                    }
+
+                    /* === Settings panel: mobile friendly === */
+                    .settings-panel {
+                        width: 100% !important;
+                    }
+                    .settings-content {
+                        padding: 0.75rem !important;
+                    }
+                    .settings-row {
+                        flex-wrap: wrap !important;
+                        gap: 0.5rem !important;
+                    }
+                    .settings-row select {
+                        width: 100% !important;
+                    }
+
                     /* === Appointments grid === */
                     .appointments-grid {
                         gap: 1rem !important;
