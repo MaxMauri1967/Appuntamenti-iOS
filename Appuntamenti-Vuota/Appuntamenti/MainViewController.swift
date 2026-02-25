@@ -12,7 +12,13 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
         super.viewDidLoad()
         view.backgroundColor = UIColor(red: 0.247, green: 0.318, blue: 0.710, alpha: 1)
         setupWebView()
-        loadLocalPage()
+
+        let mode = UserDefaults.standard.string(forKey: "appMode") ?? "offline"
+        if mode == "online" {
+            loadOnlinePage()
+        } else {
+            loadLocalPage()
+        }
     }
 
     // MARK: - Setup
@@ -59,6 +65,16 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
         let htmlURL = URL(fileURLWithPath: htmlPath)
         let baseURL = htmlURL.deletingLastPathComponent()
         webView.loadFileURL(htmlURL, allowingReadAccessTo: baseURL)
+    }
+
+    // MARK: - Load Online Page
+
+    private func loadOnlinePage() {
+        guard let url = URL(string: "https://www.gondolaoffice.eu/appuntamenti/") else {
+            print("Appuntamenti: Invalid online URL")
+            return
+        }
+        webView.load(URLRequest(url: url))
     }
 
     // MARK: - WKScriptMessageHandler (JavaScript Bridge)

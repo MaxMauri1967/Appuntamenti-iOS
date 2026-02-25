@@ -11,6 +11,7 @@
 		B10002 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20002; };
 		B10003 /* SplashViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20003; };
 		B10004 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20004; };
+		B10008 /* ModeSelectionViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20008; };
 		B10005 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B20005; };
 		B10006 /* WebAssets in Resources */ = {isa = PBXBuildFile; fileRef = B20007; };
 /* End PBXBuildFile section */
@@ -20,6 +21,7 @@
 		B20002 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		B20003 /* SplashViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplashViewController.swift; sourceTree = "<group>"; };
 		B20004 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
+		B20008 /* ModeSelectionViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeSelectionViewController.swift; sourceTree = "<group>"; };
 		B20005 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B20006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B20007 /* WebAssets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = WebAssets; sourceTree = "<group>"; };
@@ -42,6 +44,7 @@
 				B20002 /* SceneDelegate.swift */,
 				B20003 /* SplashViewController.swift */,
 				B20004 /* MainViewController.swift */,
+				B20008 /* ModeSelectionViewController.swift */,
 				B20005 /* Assets.xcassets */,
 				B20006 /* Info.plist */,
 				B20007 /* WebAssets */,
@@ -143,6 +146,7 @@
 				B10002 /* SceneDelegate.swift in Sources */,
 				B10003 /* SplashViewController.swift in Sources */,
 				B10004 /* MainViewController.swift in Sources */,
+				B10008 /* ModeSelectionViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -62,13 +62,22 @@ class SplashViewController: UIViewController {
     }
 
     private func transitionToMain() {
-        let mainVC = MainViewController()
-        mainVC.modalTransitionStyle = .crossDissolve
-        mainVC.modalPresentationStyle = .fullScreen
+        let targetVC: UIViewController
+
+        if UserDefaults.standard.string(forKey: "appMode") != nil {
+            // Mode already selected, go to main
+            targetVC = MainViewController()
+        } else {
+            // First launch, show mode selection
+            targetVC = ModeSelectionViewController()
+        }
+
+        targetVC.modalTransitionStyle = .crossDissolve
+        targetVC.modalPresentationStyle = .fullScreen
 
         if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let window = scene.windows.first {
-            window.rootViewController = mainVC
+            window.rootViewController = targetVC
             UIView.transition(with: window, duration: 0.3, options: .transitionCrossDissolve, animations: nil)
         }
     }
