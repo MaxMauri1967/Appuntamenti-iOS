@@ -45,13 +45,15 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
+        webView.scrollView.bounces = true
+        webView.scrollView.showsHorizontalScrollIndicator = false
         webView.translatesAutoresizingMaskIntoConstraints = false
 
         view.addSubview(webView)
         NSLayoutConstraint.activate([
-            webView.topAnchor.constraint(equalTo: view.topAnchor),
-            webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            webView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            webView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
     }
