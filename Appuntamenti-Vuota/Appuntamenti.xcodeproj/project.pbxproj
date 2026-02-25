@@ -12,6 +12,11 @@
 		B10003 /* SplashViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20003; };
 		B10004 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20004; };
 		B10008 /* ModeSelectionViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20008; };
+		B10009 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20009; };
+		B10010 /* Appointment.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20010A; };
+		B10011 /* AppointmentFormViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20011; };
+		B10012 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20012; };
+		B10013 /* SetupViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20013; };
 		B10005 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B20005; };
 		B10006 /* WebAssets in Resources */ = {isa = PBXBuildFile; fileRef = B20007; };
 /* End PBXBuildFile section */
@@ -22,6 +27,11 @@
 		B20003 /* SplashViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SplashViewController.swift; sourceTree = "<group>"; };
 		B20004 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		B20008 /* ModeSelectionViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModeSelectionViewController.swift; sourceTree = "<group>"; };
+		B20009 /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
+		B20010A /* Appointment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Appointment.swift; sourceTree = "<group>"; };
+		B20011 /* AppointmentFormViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppointmentFormViewController.swift; sourceTree = "<group>"; };
+		B20012 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
+		B20013 /* SetupViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupViewController.swift; sourceTree = "<group>"; };
 		B20005 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B20006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B20007 /* WebAssets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = WebAssets; sourceTree = "<group>"; };
@@ -45,6 +55,11 @@
 				B20003 /* SplashViewController.swift */,
 				B20004 /* MainViewController.swift */,
 				B20008 /* ModeSelectionViewController.swift */,
+				B20009 /* APIService.swift */,
+				B20010A /* Appointment.swift */,
+				B20011 /* AppointmentFormViewController.swift */,
+				B20012 /* NotificationManager.swift */,
+				B20013 /* SetupViewController.swift */,
 				B20005 /* Assets.xcassets */,
 				B20006 /* Info.plist */,
 				B20007 /* WebAssets */,
@@ -147,6 +162,11 @@
 				B10003 /* SplashViewController.swift in Sources */,
 				B10004 /* MainViewController.swift in Sources */,
 				B10008 /* ModeSelectionViewController.swift in Sources */,
+				B10009 /* APIService.swift in Sources */,
+				B10010 /* Appointment.swift in Sources */,
+				B10011 /* AppointmentFormViewController.swift in Sources */,
+				B10012 /* NotificationManager.swift in Sources */,
+				B10013 /* SetupViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

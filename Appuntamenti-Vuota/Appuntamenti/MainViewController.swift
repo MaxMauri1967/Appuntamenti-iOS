@@ -1,709 +1,565 @@
 import UIKit
-import WebKit
-import UserNotifications
 
-class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+class MainViewController: UIViewController, UITableViewDataSource, UITableViewDelegate, AppointmentFormDelegate {
 
-    private var webView: WKWebView!
-    private var loadingOverlay: UIView!
-    private var isAutoLoggingIn = false
+    // MARK: - Data
+
+    private var allAppointments: [Appointment] = []
+    private var groupedAppointments: [(date: String, displayDate: String, appointments: [Appointment])] = []
+    private var sheets: [String] = []
+    private var currentSheet: String?
+    private var currentStatus: String? = "pending"
+
+    // MARK: - UI
+
+    private let tableView = UITableView(frame: .zero, style: .grouped)
+    private let refreshControl = UIRefreshControl()
+    private let statusSegment = UISegmentedControl(items: ["Tutti", "In attesa", "Completati"])
+    private let emptyLabel = UILabel()
+    private let loadingSpinner = UIActivityIndicatorView(style: .large)
+
+    // MARK: - Colors
+
+    private let primaryColor = UIColor(red: 99/255, green: 102/255, blue: 241/255, alpha: 1)
+    private let bgColor = UIColor(red: 248/255, green: 250/255, blue: 252/255, alpha: 1)
+    private let textMain = UIColor(red: 30/255, green: 41/255, blue: 59/255, alpha: 1)
+    private let textMuted = UIColor(red: 100/255, green: 116/255, blue: 139/255, alpha: 1)
 
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(red: 0.247, green: 0.318, blue: 0.710, alpha: 1)
-        setupWebView()
-        setupLoadingOverlay()
+        view.backgroundColor = bgColor
 
-        let mode = UserDefaults.standard.string(forKey: "appMode") ?? "offline"
-        if mode == "online" {
-            // Check if we have saved credentials — if so, hide the WebView during auto-login
-            let savedUser = UserDefaults.standard.string(forKey: "savedUsername") ?? ""
-            let savedPass = UserDefaults.standard.string(forKey: "savedPassword") ?? ""
-            if !savedUser.isEmpty && !savedPass.isEmpty {
-                isAutoLoggingIn = true
-                showLoadingOverlay()
-            }
-            loadOnlinePage()
-        } else {
-            loadLocalPage()
-        }
+        setupNavigation()
+        setupStatusFilter()
+        setupTableView()
+        setupEmptyState()
+        setupLoadingSpinner()
+
+        // Default filter to "In attesa"
+        statusSegment.selectedSegmentIndex = 1
+
+        loadData()
     }
 
-    // MARK: - Setup
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(false, animated: animated)
+    }
 
-    private func setupWebView() {
-        let config = WKWebViewConfiguration()
-        config.allowsInlineMediaPlayback = true
+    // MARK: - Navigation Bar
 
-        // Enable IndexedDB persistence
-        let dataStore = WKWebsiteDataStore.default()
-        config.websiteDataStore = dataStore
+    private func setupNavigation() {
+        title = "Appuntamenti"
+        navigationController?.navigationBar.prefersLargeTitles = true
 
-        // Add JavaScript bridge for notifications and credentials
-        let contentController = WKUserContentController()
-        contentController.add(self, name: "scheduleNotification")
-        contentController.add(self, name: "cancelNotification")
-        contentController.add(self, name: "cancelAllNotifications")
-        contentController.add(self, name: "saveCredentials")
+        // Settings button (left)
+        let settingsBtn = UIBarButtonItem(image: UIImage(systemName: "gearshape"), style: .plain, target: self, action: #selector(settingsTapped))
+        settingsBtn.tintColor = primaryColor
+        navigationItem.leftBarButtonItem = settingsBtn
 
-        // Inject mobile-friendly CSS overrides to fix server CSS on narrow screens
-        let mobileCSS = WKUserScript(
-            source: """
-            (function() {
-                var style = document.createElement('style');
-                style.textContent = `
-                    /* === Base: prevent horizontal overflow === */
-                    html, body {
-                        overflow-x: hidden !important;
-                        width: 100% !important;
-                        max-width: 100vw !important;
-                        -webkit-text-size-adjust: 100% !important;
-                    }
-                    body {
-                        padding: 0.75rem !important;
-                        box-sizing: border-box !important;
-                    }
-                    .container {
-                        max-width: 100% !important;
-                        padding: 0 !important;
-                    }
+        // Add button (right)
+        let addBtn = UIBarButtonItem(image: UIImage(systemName: "plus.circle.fill"), style: .plain, target: self, action: #selector(addTapped))
+        addBtn.tintColor = primaryColor
+        navigationItem.rightBarButtonItem = addBtn
+    }
 
-                    /* === Header: stack vertically === */
-                    header {
-                        display: flex !important;
-                        flex-direction: column !important;
-                        align-items: stretch !important;
-                        gap: 0.5rem !important;
-                        margin-bottom: 1rem !important;
-                    }
-                    h1 {
-                        font-size: 1.25rem !important;
-                        width: 100% !important;
-                    }
+    // MARK: - Status Filter
 
-                    /* === Header actions: wrap row === */
-                    .header-actions {
-                        display: flex !important;
-                        flex-wrap: wrap !important;
-                        gap: 0.5rem !important;
-                        width: 100% !important;
-                        align-items: center !important;
-                    }
+    private func setupStatusFilter() {
+        statusSegment.selectedSegmentTintColor = primaryColor
+        statusSegment.setTitleTextAttributes([.foregroundColor: UIColor.white, .font: UIFont.systemFont(ofSize: 13, weight: .semibold)], for: .selected)
+        statusSegment.setTitleTextAttributes([.foregroundColor: textMuted, .font: UIFont.systemFont(ofSize: 13, weight: .medium)], for: .normal)
+        statusSegment.translatesAutoresizingMaskIntoConstraints = false
+        statusSegment.addTarget(self, action: #selector(statusChanged), for: .valueChanged)
+        view.addSubview(statusSegment)
 
-                    /* === Sheet filter (year) === */
-                    #sheetFilter {
-                        width: auto !important;
-                        min-width: 80px !important;
-                        max-width: 100px !important;
-                        flex: 0 0 auto !important;
-                        position: relative !important;
-                        z-index: 2 !important;
-                    }
-
-                    /* === Status filter buttons === */
-                    .status-filter-group {
-                        display: flex !important;
-                        flex-wrap: wrap !important;
-                        gap: 0.25rem !important;
-                        position: relative !important;
-                        z-index: 2 !important;
-                    }
-                    .status-btn {
-                        padding: 0.5rem 0.85rem !important;
-                        font-size: 0.8rem !important;
-                        position: relative !important;
-                        z-index: 2 !important;
-                        -webkit-tap-highlight-color: rgba(0,0,0,0.1) !important;
-                        cursor: pointer !important;
-                    }
-
-                    /* === Header buttons: own row, full width === */
-                    .header-btns {
-                        display: flex !important;
-                        flex-wrap: wrap !important;
-                        gap: 0.5rem !important;
-                        width: 100% !important;
-                    }
-                    .header-btns > * {
-                        flex: 1 1 auto !important;
-                        min-width: 0 !important;
-                        text-align: center !important;
-                        justify-content: center !important;
-                    }
-
-                    /* === Add button: always visible === */
-                    #addBtn {
-                        display: inline-flex !important;
-                        visibility: visible !important;
-                        opacity: 1 !important;
-                        white-space: nowrap !important;
-                        position: relative !important;
-                        z-index: 2 !important;
-                    }
-
-                    /* === Hide logout button in iOS app === */
-                    .logout-btn {
-                        display: none !important;
-                    }
-
-                    /* === Buttons: general === */
-                    .btn {
-                        padding: 0.5rem 0.75rem !important;
-                        font-size: 0.8rem !important;
-                    }
-
-                    /* === Date rows: stack vertically === */
-                    .date-row {
-                        flex-direction: column !important;
-                        padding: 1rem !important;
-                        gap: 0.75rem !important;
-                        max-width: 100% !important;
-                        overflow: hidden !important;
-                    }
-
-                    /* === Date sidebar: horizontal compact bar === */
-                    .date-sidebar {
-                        min-width: 0 !important;
-                        flex-direction: row !important;
-                        align-items: baseline !important;
-                        gap: 0.5rem !important;
-                        padding-right: 0 !important;
-                        padding-bottom: 0.5rem !important;
-                        border-right: none !important;
-                        border-bottom: 2px solid #f1f5f9 !important;
-                    }
-                    .date-day-name {
-                        font-size: 0.7rem !important;
-                        margin-top: 0 !important;
-                        order: 1 !important;
-                    }
-                    .date-day-num {
-                        font-size: 1.5rem !important;
-                        order: 2 !important;
-                    }
-                    .date-month {
-                        font-size: 0.8rem !important;
-                        order: 3 !important;
-                    }
-
-                    /* === Cards: full width === */
-                    .day-content {
-                        flex-direction: column !important;
-                        width: 100% !important;
-                        min-width: 0 !important;
-                        gap: 0.75rem !important;
-                    }
-                    .appointment-card {
-                        min-width: 0 !important;
-                        max-width: 100% !important;
-                        width: 100% !important;
-                        flex: 1 1 100% !important;
-                        padding: 0.75rem 1rem !important;
-                        box-sizing: border-box !important;
-                    }
-
-                    /* === Card content: readable === */
-                    .card-title {
-                        font-size: 0.95rem !important;
-                        word-break: break-word !important;
-                        overflow-wrap: break-word !important;
-                    }
-                    .card-time {
-                        font-size: 0.8rem !important;
-                        margin-bottom: 0.5rem !important;
-                    }
-                    .card-desc {
-                        font-size: 0.8rem !important;
-                        margin-bottom: 0.75rem !important;
-                    }
-
-                    /* === Card actions === */
-                    .card-actions {
-                        display: flex !important;
-                        flex-wrap: wrap !important;
-                        gap: 0.5rem !important;
-                        justify-content: flex-start !important;
-                    }
-                    .card-actions .badge,
-                    .card-actions .btn,
-                    .card-actions button,
-                    .card-actions a {
-                        white-space: nowrap !important;
-                        font-size: 0.7rem !important;
-                        padding: 0.25rem 0.5rem !important;
-                        writing-mode: horizontal-tb !important;
-                        text-orientation: mixed !important;
-                        display: inline-flex !important;
-                        align-items: center !important;
-                    }
-
-                    /* === Badges === */
-                    .badge {
-                        white-space: nowrap !important;
-                        font-size: 0.65rem !important;
-                        padding: 0.2rem 0.5rem !important;
-                    }
-
-                    /* === Modal: mobile friendly === */
-                    .modal-content {
-                        width: 95% !important;
-                        max-width: 95% !important;
-                        padding: 1.25rem !important;
-                        margin: 0 auto !important;
-                        max-height: 90vh !important;
-                        overflow-y: auto !important;
-                    }
-
-                    /* === Appointments grid === */
-                    .appointments-grid {
-                        gap: 1rem !important;
-                    }
-                `;
-                document.head.appendChild(style);
-            })();
-            """,
-            injectionTime: .atDocumentEnd,
-            forMainFrameOnly: true
-        )
-        contentController.addUserScript(mobileCSS)
-
-        config.userContentController = contentController
-
-        webView = WKWebView(frame: .zero, configuration: config)
-        webView.navigationDelegate = self
-        webView.uiDelegate = self
-        webView.isOpaque = false
-        webView.backgroundColor = .clear
-        webView.scrollView.backgroundColor = .clear
-        webView.scrollView.bounces = true
-        webView.scrollView.showsHorizontalScrollIndicator = false
-        webView.translatesAutoresizingMaskIntoConstraints = false
-
-        view.addSubview(webView)
         NSLayoutConstraint.activate([
-            webView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            statusSegment.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            statusSegment.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            statusSegment.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
         ])
     }
 
-    // MARK: - Loading Overlay (hides login flash)
+    // MARK: - Table View
 
-    private func setupLoadingOverlay() {
-        loadingOverlay = UIView()
-        loadingOverlay.backgroundColor = UIColor(red: 0.247, green: 0.318, blue: 0.710, alpha: 1)
-        loadingOverlay.translatesAutoresizingMaskIntoConstraints = false
-        loadingOverlay.isHidden = true
+    private func setupTableView() {
+        tableView.dataSource = self
+        tableView.delegate = self
+        tableView.backgroundColor = .clear
+        tableView.separatorStyle = .none
+        tableView.register(AppointmentCell.self, forCellReuseIdentifier: "AppointmentCell")
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        tableView.refreshControl = refreshControl
+        refreshControl.addTarget(self, action: #selector(pullToRefresh), for: .valueChanged)
+        refreshControl.tintColor = primaryColor
+        view.addSubview(tableView)
 
-        let spinner = UIActivityIndicatorView(style: .large)
-        spinner.color = .white
-        spinner.startAnimating()
-        spinner.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            tableView.topAnchor.constraint(equalTo: statusSegment.bottomAnchor, constant: 12),
+            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+    }
+
+    // MARK: - Empty State
+
+    private func setupEmptyState() {
+        emptyLabel.text = "Nessun appuntamento trovato"
+        emptyLabel.font = .systemFont(ofSize: 16, weight: .medium)
+        emptyLabel.textColor = textMuted
+        emptyLabel.textAlignment = .center
+        emptyLabel.isHidden = true
+        emptyLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(emptyLabel)
+        NSLayoutConstraint.activate([
+            emptyLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            emptyLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+        ])
+    }
+
+    // MARK: - Loading
+
+    private func setupLoadingSpinner() {
+        loadingSpinner.color = primaryColor
+        loadingSpinner.hidesWhenStopped = true
+        loadingSpinner.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(loadingSpinner)
+        NSLayoutConstraint.activate([
+            loadingSpinner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            loadingSpinner.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+        ])
+    }
+
+    // MARK: - Data Loading
+
+    private func loadData() {
+        loadingSpinner.startAnimating()
+        emptyLabel.isHidden = true
+
+        let statusFilter: String?
+        switch statusSegment.selectedSegmentIndex {
+        case 1: statusFilter = "pending"
+        case 2: statusFilter = "completed"
+        default: statusFilter = nil
+        }
+        currentStatus = statusFilter
+
+        APIService.shared.fetchAppointments(sheet: currentSheet, status: statusFilter) { [weak self] result in
+            DispatchQueue.main.async {
+                self?.loadingSpinner.stopAnimating()
+                self?.refreshControl.endRefreshing()
+                switch result {
+                case .success(let appointments):
+                    self?.allAppointments = appointments
+                    self?.groupAppointments()
+                    self?.tableView.reloadData()
+                    self?.emptyLabel.isHidden = !(self?.groupedAppointments.isEmpty ?? true)
+
+                    // Schedule notifications for pending
+                    if statusFilter == nil || statusFilter == "pending" {
+                        NotificationManager.shared.scheduleNotifications(for: appointments)
+                    }
+                case .failure(let error):
+                    self?.showErrorAlert(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func groupAppointments() {
+        var dict: [String: [Appointment]] = [:]
+        for app in allAppointments {
+            dict[app.appointmentDate, default: []].append(app)
+        }
+        groupedAppointments = dict.map { (date: $0.key, displayDate: formatDateHeader($0.key), appointments: $0.value) }
+            .sorted { $0.date < $1.date }
+    }
+
+    private func formatDateHeader(_ dateString: String) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = formatter.date(from: dateString) else { return dateString }
+        formatter.locale = Locale(identifier: "it_IT")
+        formatter.dateFormat = "EEEE d MMMM"
+        return formatter.string(from: date).capitalized
+    }
+
+    // MARK: - UITableViewDataSource
+
+    func numberOfSections(in tableView: UITableView) -> Int {
+        return groupedAppointments.count
+    }
+
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return groupedAppointments[section].appointments.count
+    }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "AppointmentCell", for: indexPath) as! AppointmentCell
+        let appointment = groupedAppointments[indexPath.section].appointments[indexPath.row]
+        cell.configure(with: appointment, primaryColor: primaryColor)
+        return cell
+    }
+
+    // MARK: - Section Headers
+
+    func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+        let header = UIView()
+        header.backgroundColor = bgColor
 
         let label = UILabel()
-        label.text = "Caricamento..."
-        label.textColor = .white
-        label.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        label.text = groupedAppointments[section].displayDate
+        label.font = .systemFont(ofSize: 15, weight: .bold)
+        label.textColor = primaryColor
         label.translatesAutoresizingMaskIntoConstraints = false
-
-        loadingOverlay.addSubview(spinner)
-        loadingOverlay.addSubview(label)
-        view.addSubview(loadingOverlay)
+        header.addSubview(label)
 
         NSLayoutConstraint.activate([
-            loadingOverlay.topAnchor.constraint(equalTo: view.topAnchor),
-            loadingOverlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            loadingOverlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            loadingOverlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            label.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 20),
+            label.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -20),
+            label.bottomAnchor.constraint(equalTo: header.bottomAnchor, constant: -4),
+        ])
+        return header
+    }
 
-            spinner.centerXAnchor.constraint(equalTo: loadingOverlay.centerXAnchor),
-            spinner.centerYAnchor.constraint(equalTo: loadingOverlay.centerYAnchor, constant: -20),
+    func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+        return 40
+    }
 
-            label.centerXAnchor.constraint(equalTo: loadingOverlay.centerXAnchor),
-            label.topAnchor.constraint(equalTo: spinner.bottomAnchor, constant: 16),
+    // MARK: - UITableViewDelegate
+
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        let appointment = groupedAppointments[indexPath.section].appointments[indexPath.row]
+        showEditForm(for: appointment)
+    }
+
+    func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        let appointment = groupedAppointments[indexPath.section].appointments[indexPath.row]
+
+        // Delete
+        let deleteAction = UIContextualAction(style: .destructive, title: "Elimina") { [weak self] _, _, completion in
+            self?.confirmDelete(appointment: appointment)
+            completion(true)
+        }
+        deleteAction.image = UIImage(systemName: "trash")
+
+        // Toggle status
+        let isCompleted = appointment.status == "completed"
+        let toggleAction = UIContextualAction(style: .normal, title: isCompleted ? "Riapri" : "Completa") { [weak self] _, _, completion in
+            self?.toggleStatus(appointment: appointment)
+            completion(true)
+        }
+        toggleAction.backgroundColor = isCompleted ? .systemOrange : .systemGreen
+        toggleAction.image = UIImage(systemName: isCompleted ? "arrow.uturn.backward" : "checkmark.circle")
+
+        return UISwipeActionsConfiguration(actions: [deleteAction, toggleAction])
+    }
+
+    // MARK: - Actions
+
+    @objc private func addTapped() {
+        let formVC = AppointmentFormViewController()
+        formVC.delegate = self
+        let nav = UINavigationController(rootViewController: formVC)
+        present(nav, animated: true)
+    }
+
+    @objc private func settingsTapped() {
+        let alert = UIAlertController(title: "Impostazioni", message: nil, preferredStyle: .actionSheet)
+
+        // Notification settings
+        alert.addAction(UIAlertAction(title: "🔔 Notifiche", style: .default) { [weak self] _ in
+            self?.showNotificationSettings()
+        })
+
+        // Logout
+        alert.addAction(UIAlertAction(title: "🚪 Disconnetti", style: .destructive) { [weak self] _ in
+            self?.confirmLogout()
+        })
+
+        alert.addAction(UIAlertAction(title: "Annulla", style: .cancel))
+
+        present(alert, animated: true)
+    }
+
+    @objc private func statusChanged() {
+        loadData()
+    }
+
+    @objc private func pullToRefresh() {
+        loadData()
+    }
+
+    // MARK: - Edit Form
+
+    private func showEditForm(for appointment: Appointment) {
+        let formVC = AppointmentFormViewController()
+        formVC.appointment = appointment
+        formVC.delegate = self
+        let nav = UINavigationController(rootViewController: formVC)
+        present(nav, animated: true)
+    }
+
+    // MARK: - Toggle Status
+
+    private func toggleStatus(appointment: Appointment) {
+        let newStatus = appointment.status == "completed" ? "pending" : "completed"
+        APIService.shared.updateAppointment(
+            id: appointment.id,
+            title: appointment.title,
+            date: appointment.appointmentDate,
+            time: appointment.appointmentTime,
+            description: appointment.description ?? "",
+            status: newStatus
+        ) { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success:
+                    self?.loadData()
+                case .failure(let error):
+                    self?.showErrorAlert(error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    // MARK: - Delete
+
+    private func confirmDelete(appointment: Appointment) {
+        let alert = UIAlertController(
+            title: "Eliminare?",
+            message: "Vuoi eliminare \"\(appointment.title)\"?",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Annulla", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Elimina", style: .destructive) { [weak self] _ in
+            APIService.shared.deleteAppointment(id: appointment.id) { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success:
+                        self?.loadData()
+                    case .failure(let error):
+                        self?.showErrorAlert(error.localizedDescription)
+                    }
+                }
+            }
+        })
+        present(alert, animated: true)
+    }
+
+    // MARK: - Notification Settings
+
+    private func showNotificationSettings() {
+        let alert = UIAlertController(
+            title: "🔔 Impostazioni Notifiche",
+            message: "1° Promemoria: \(NotificationManager.shared.reminder1Label)\n2° Promemoria: \(NotificationManager.shared.reminder2Label)",
+            preferredStyle: .actionSheet
+        )
+
+        alert.addAction(UIAlertAction(title: "Cambia 1° Promemoria", style: .default) { [weak self] _ in
+            self?.showReminderPicker(isFirst: true)
+        })
+
+        alert.addAction(UIAlertAction(title: "Cambia 2° Promemoria", style: .default) { [weak self] _ in
+            self?.showReminderPicker(isFirst: false)
+        })
+
+        alert.addAction(UIAlertAction(title: "Annulla", style: .cancel))
+        present(alert, animated: true)
+    }
+
+    private func showReminderPicker(isFirst: Bool) {
+        let options = isFirst ? NotificationManager.reminder1Options : NotificationManager.reminder2Options
+        let key = isFirst ? "phoneReminder1" : "phoneReminder2"
+
+        let alert = UIAlertController(title: isFirst ? "1° Promemoria" : "2° Promemoria", message: nil, preferredStyle: .actionSheet)
+        for option in options {
+            alert.addAction(UIAlertAction(title: option.0, style: .default) { [weak self] _ in
+                UserDefaults.standard.set(option.1, forKey: key)
+                // Reschedule notifications
+                NotificationManager.shared.scheduleNotifications(for: self?.allAppointments ?? [])
+            })
+        }
+        alert.addAction(UIAlertAction(title: "Annulla", style: .cancel))
+        present(alert, animated: true)
+    }
+
+    // MARK: - Logout
+
+    private func confirmLogout() {
+        let alert = UIAlertController(
+            title: "Disconnetti",
+            message: "Vuoi disconnetterti? Dovrai reinserire le credenziali.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Annulla", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Disconnetti", style: .destructive) { [weak self] _ in
+            APIService.shared.logout()
+            // Switch to setup screen
+            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+               let window = scene.windows.first {
+                let setupVC = SetupViewController()
+                setupVC.delegate = self
+                let nav = UINavigationController(rootViewController: setupVC)
+                window.rootViewController = nav
+                window.makeKeyAndVisible()
+            }
+        })
+        present(alert, animated: true)
+    }
+
+    // MARK: - AppointmentFormDelegate
+
+    func didSaveAppointment() {
+        loadData()
+    }
+
+    // MARK: - Error
+
+    private func showErrorAlert(_ message: String) {
+        let alert = UIAlertController(title: "Errore", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
+    }
+
+    override var preferredStatusBarStyle: UIStatusBarStyle { .darkContent }
+}
+
+// MARK: - SetupViewControllerDelegate
+extension MainViewController: SetupViewControllerDelegate {
+    func setupDidComplete() {
+        // Re-login happened, reload data
+        loadData()
+        // Switch root to this
+        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = scene.windows.first {
+            let nav = UINavigationController(rootViewController: self)
+            window.rootViewController = nav
+            window.makeKeyAndVisible()
+        }
+    }
+}
+
+// MARK: - Custom Cell
+
+class AppointmentCell: UITableViewCell {
+
+    private let cardView = UIView()
+    private let accentBar = UIView()
+    private let titleLabel = UILabel()
+    private let timeLabel = UILabel()
+    private let descLabel = UILabel()
+    private let badgeLabel = UILabel()
+
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        backgroundColor = .clear
+        selectionStyle = .none
+        setupCell()
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    private func setupCell() {
+        // Card background
+        cardView.backgroundColor = .white
+        cardView.layer.cornerRadius = 12
+        cardView.layer.shadowColor = UIColor.black.cgColor
+        cardView.layer.shadowOpacity = 0.06
+        cardView.layer.shadowOffset = CGSize(width: 0, height: 2)
+        cardView.layer.shadowRadius = 8
+        cardView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(cardView)
+
+        // Accent bar
+        accentBar.layer.cornerRadius = 1.5
+        accentBar.translatesAutoresizingMaskIntoConstraints = false
+        cardView.addSubview(accentBar)
+
+        // Title
+        titleLabel.font = .systemFont(ofSize: 16, weight: .semibold)
+        titleLabel.textColor = UIColor(red: 30/255, green: 41/255, blue: 59/255, alpha: 1)
+        titleLabel.numberOfLines = 2
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        cardView.addSubview(titleLabel)
+
+        // Time
+        timeLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        timeLabel.textColor = UIColor(red: 100/255, green: 116/255, blue: 139/255, alpha: 1)
+        timeLabel.translatesAutoresizingMaskIntoConstraints = false
+        cardView.addSubview(timeLabel)
+
+        // Description
+        descLabel.font = .systemFont(ofSize: 13, weight: .regular)
+        descLabel.textColor = UIColor(red: 100/255, green: 116/255, blue: 139/255, alpha: 1)
+        descLabel.numberOfLines = 2
+        descLabel.translatesAutoresizingMaskIntoConstraints = false
+        cardView.addSubview(descLabel)
+
+        // Badge
+        badgeLabel.font = .systemFont(ofSize: 11, weight: .bold)
+        badgeLabel.textAlignment = .center
+        badgeLabel.layer.cornerRadius = 10
+        badgeLabel.clipsToBounds = true
+        badgeLabel.translatesAutoresizingMaskIntoConstraints = false
+        cardView.addSubview(badgeLabel)
+
+        NSLayoutConstraint.activate([
+            cardView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
+            cardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            cardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            cardView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
+
+            accentBar.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 8),
+            accentBar.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
+            accentBar.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -8),
+            accentBar.widthAnchor.constraint(equalToConstant: 3),
+
+            titleLabel.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 12),
+            titleLabel.leadingAnchor.constraint(equalTo: accentBar.trailingAnchor, constant: 12),
+            titleLabel.trailingAnchor.constraint(equalTo: badgeLabel.leadingAnchor, constant: -8),
+
+            timeLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
+            timeLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+
+            descLabel.topAnchor.constraint(equalTo: timeLabel.bottomAnchor, constant: 6),
+            descLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
+            descLabel.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -12),
+            descLabel.bottomAnchor.constraint(lessThanOrEqualTo: cardView.bottomAnchor, constant: -12),
+
+            badgeLabel.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 12),
+            badgeLabel.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -12),
+            badgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 65),
+            badgeLabel.heightAnchor.constraint(equalToConstant: 22),
         ])
     }
 
-    private func showLoadingOverlay() {
-        loadingOverlay.isHidden = false
-        view.bringSubviewToFront(loadingOverlay)
-    }
+    func configure(with appointment: Appointment, primaryColor: UIColor) {
+        titleLabel.text = appointment.title
+        timeLabel.text = "🕐 \(appointment.displayTime)"
+        descLabel.text = appointment.description
+        descLabel.isHidden = (appointment.description ?? "").isEmpty
+        accentBar.backgroundColor = primaryColor
 
-    private func hideLoadingOverlay() {
-        UIView.animate(withDuration: 0.3) {
-            self.loadingOverlay.alpha = 0
-        } completion: { _ in
-            self.loadingOverlay.isHidden = true
-            self.loadingOverlay.alpha = 1
-        }
-    }
-
-    // MARK: - Load Local Page
-
-    private func loadLocalPage() {
-        guard let htmlPath = Bundle.main.path(forResource: "index", ofType: "html", inDirectory: "WebAssets") else {
-            print("Appuntamenti: index.html not found in WebAssets")
-            return
-        }
-        let htmlURL = URL(fileURLWithPath: htmlPath)
-        let baseURL = htmlURL.deletingLastPathComponent()
-        webView.loadFileURL(htmlURL, allowingReadAccessTo: baseURL)
-    }
-
-    // MARK: - Load Online Page
-
-    private func loadOnlinePage() {
-        guard let url = URL(string: "https://www.gondolaoffice.eu/appuntamenti/") else {
-            print("Appuntamenti: Invalid online URL")
-            return
-        }
-        webView.load(URLRequest(url: url))
-    }
-
-    // MARK: - WKScriptMessageHandler (JavaScript Bridge)
-
-    func userContentController(_ userContentController: WKUserContentController,
-                                didReceive message: WKScriptMessage) {
-        switch message.name {
-        case "scheduleNotification":
-            handleScheduleNotification(message.body)
-        case "cancelNotification":
-            handleCancelNotification(message.body)
-        case "cancelAllNotifications":
-            UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
-            print("Appuntamenti: All notifications cancelled")
-        case "saveCredentials":
-            handleSaveCredentials(message.body)
+        // Badge
+        badgeLabel.text = " \(appointment.statusDisplayName) "
+        switch appointment.status {
+        case "pending":
+            badgeLabel.backgroundColor = UIColor(red: 254/255, green: 243/255, blue: 199/255, alpha: 1)
+            badgeLabel.textColor = UIColor(red: 146/255, green: 64/255, blue: 14/255, alpha: 1)
+        case "completed":
+            badgeLabel.backgroundColor = UIColor(red: 209/255, green: 250/255, blue: 229/255, alpha: 1)
+            badgeLabel.textColor = UIColor(red: 6/255, green: 95/255, blue: 70/255, alpha: 1)
+        case "cancelled":
+            badgeLabel.backgroundColor = UIColor(red: 254/255, green: 226/255, blue: 226/255, alpha: 1)
+            badgeLabel.textColor = UIColor(red: 153/255, green: 27/255, blue: 27/255, alpha: 1)
         default:
-            break
+            badgeLabel.backgroundColor = .systemGray5
+            badgeLabel.textColor = .systemGray
         }
     }
-
-    // MARK: - Credential Management
-
-    private func handleSaveCredentials(_ body: Any) {
-        guard let dict = body as? [String: Any],
-              let username = dict["username"] as? String,
-              let password = dict["password"] as? String else {
-            print("Appuntamenti: Invalid credentials data")
-            return
-        }
-        UserDefaults.standard.set(username, forKey: "savedUsername")
-        UserDefaults.standard.set(password, forKey: "savedPassword")
-        print("Appuntamenti: Credentials saved")
-    }
-
-    private func autoFillLoginIfNeeded() {
-        let mode = UserDefaults.standard.string(forKey: "appMode") ?? "offline"
-        guard mode == "online" else { return }
-
-        guard let savedUser = UserDefaults.standard.string(forKey: "savedUsername"),
-              let savedPass = UserDefaults.standard.string(forKey: "savedPassword"),
-              !savedUser.isEmpty, !savedPass.isEmpty else {
-            // No saved credentials — show the login page
-            hideLoadingOverlay()
-            isAutoLoggingIn = false
-            return
-        }
-
-        let escapedUser = savedUser.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
-        let escapedPass = savedPass.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
-
-        let autoLoginScript = """
-        (function() {
-            var uField = document.getElementById('username');
-            var pField = document.getElementById('password');
-            if (uField && pField) {
-                uField.value = '\(escapedUser)';
-                pField.value = '\(escapedPass)';
-                var form = uField.closest('form');
-                if (form) { form.submit(); }
-            }
-        })();
-        """
-        webView.evaluateJavaScript(autoLoginScript, completionHandler: nil)
-        print("Appuntamenti: Auto-login attempted")
-    }
-
-    private func injectCredentialInterceptor() {
-        let interceptScript = """
-        (function() {
-            var form = document.querySelector('form');
-            var uField = document.getElementById('username');
-            var pField = document.getElementById('password');
-            if (form && uField && pField) {
-                form.addEventListener('submit', function() {
-                    window.webkit.messageHandlers.saveCredentials.postMessage({
-                        username: uField.value,
-                        password: pField.value
-                    });
-                });
-            }
-        })();
-        """
-        webView.evaluateJavaScript(interceptScript, completionHandler: nil)
-    }
-
-    private func handleScheduleNotification(_ body: Any) {
-        guard let dict = body as? [String: Any],
-              let id = dict["id"] as? String,
-              let title = dict["title"] as? String,
-              let bodyText = dict["body"] as? String,
-              let timestamp = dict["timestamp"] as? Double else {
-            print("Appuntamenti: Invalid notification data")
-            return
-        }
-
-        let fireDate = Date(timeIntervalSince1970: timestamp / 1000.0)
-
-        // Don't schedule notifications in the past
-        guard fireDate > Date() else {
-            print("Appuntamenti: Skipping past notification: \(title)")
-            return
-        }
-
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = bodyText
-        content.sound = .default
-        content.badge = 1
-
-        let components = Calendar.current.dateComponents(
-            [.year, .month, .day, .hour, .minute, .second],
-            from: fireDate
-        )
-        let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
-
-        let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("Appuntamenti: Error scheduling notification: \(error)")
-            } else {
-                print("Appuntamenti: Notification scheduled: \(title) at \(fireDate)")
-            }
-        }
-    }
-
-    private func handleCancelNotification(_ body: Any) {
-        guard let dict = body as? [String: Any],
-              let id = dict["id"] as? String else { return }
-        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
-        print("Appuntamenti: Notification cancelled: \(id)")
-    }
-
-    // MARK: - WKNavigationDelegate
-
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        // Inject the iOS notification bridge into the page
-        let bridgeScript = """
-        if (!window.AndroidBridge) {
-            window.AndroidBridge = {
-                scheduleNotification: function(id, title, body, timestamp) {
-                    window.webkit.messageHandlers.scheduleNotification.postMessage({
-                        id: String(id), title: title, body: body, timestamp: timestamp
-                    });
-                },
-                cancelNotification: function(id) {
-                    window.webkit.messageHandlers.cancelNotification.postMessage({id: String(id)});
-                },
-                cancelAllNotifications: function() {
-                    window.webkit.messageHandlers.cancelAllNotifications.postMessage({});
-                }
-            };
-        }
-        """
-        webView.evaluateJavaScript(bridgeScript, completionHandler: nil)
-
-        // Online mode: handle login page
-        let mode = UserDefaults.standard.string(forKey: "appMode") ?? "offline"
-        if mode == "online" {
-            if let url = webView.url?.absoluteString, url.contains("login.php") || url.contains("auth.php") {
-                // On login page: try auto-fill, or intercept manual login
-                autoFillLoginIfNeeded()
-                injectCredentialInterceptor()
-            } else {
-                // We navigated away from login (auto-login succeeded or user is already logged in)
-                if isAutoLoggingIn {
-                    isAutoLoggingIn = false
-                    hideLoadingOverlay()
-                }
-                // Schedule notifications after a short delay to let JS render appointments
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
-                    self?.scheduleNotificationsFromPage()
-                }
-            }
-        }
-    }
-
-    // MARK: - WKUIDelegate
-
-    func webView(_ webView: WKWebView,
-                 createWebViewWith configuration: WKWebViewConfiguration,
-                 for navigationAction: WKNavigationAction,
-                 windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if navigationAction.targetFrame == nil {
-            webView.load(navigationAction.request)
-        }
-        return nil
-    }
-
-    // MARK: - Intercept Settings Link
-
-    func webView(_ webView: WKWebView,
-                 decidePolicyFor navigationAction: WKNavigationAction,
-                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        if let url = navigationAction.request.url,
-           url.absoluteString.contains("settings.php") {
-            // Intercept settings link — show native settings instead
-            decisionHandler(.cancel)
-            showNotificationSettings()
-            return
-        }
-        decisionHandler(.allow)
-    }
-
-    // MARK: - Native Notification Settings
-
-    private func showNotificationSettings() {
-        let reminder1Key = "phoneReminder1"
-        let reminder2Key = "phoneReminder2"
-        let currentR1 = UserDefaults.standard.integer(forKey: reminder1Key)
-        let currentR2 = UserDefaults.standard.integer(forKey: reminder2Key)
-        let r1Value = currentR1 > 0 ? currentR1 : 1440   // default 24h
-        let r2Value = currentR2 > 0 ? currentR2 : 60     // default 1h
-
-        let r1Options: [(String, Int)] = [
-            ("6 ore prima", 360),
-            ("12 ore prima", 720),
-            ("24 ore prima (1 giorno)", 1440),
-            ("48 ore prima (2 giorni)", 2880)
-        ]
-
-        let r2Options: [(String, Int)] = [
-            ("1 ora prima", 60),
-            ("1 ora e 30 min prima", 90),
-            ("2 ore prima", 120),
-            ("2 ore e 30 min prima", 150),
-            ("3 ore prima", 180),
-            ("4 ore prima", 240),
-            ("5 ore prima", 300),
-            ("6 ore prima", 360)
-        ]
-
-        // Build display strings
-        let r1Current = r1Options.first(where: { $0.1 == r1Value })?.0 ?? "24 ore prima"
-        let r2Current = r2Options.first(where: { $0.1 == r2Value })?.0 ?? "1 ora prima"
-
-        let alert = UIAlertController(
-            title: "⚙️ Impostazioni Notifiche",
-            message: "1° Promemoria: \(r1Current)\n2° Promemoria: \(r2Current)\n\nSeleziona quale promemoria modificare:",
-            preferredStyle: .actionSheet
-        )
-
-        alert.addAction(UIAlertAction(title: "1° Promemoria", style: .default) { [weak self] _ in
-            self?.showReminderPicker(title: "1° Promemoria", options: r1Options, key: reminder1Key)
-        })
-
-        alert.addAction(UIAlertAction(title: "2° Promemoria", style: .default) { [weak self] _ in
-            self?.showReminderPicker(title: "2° Promemoria", options: r2Options, key: reminder2Key)
-        })
-
-        alert.addAction(UIAlertAction(title: "Torna alla pagina", style: .cancel, handler: nil))
-
-        if let popover = alert.popoverPresentationController {
-            popover.sourceView = view
-            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
-            popover.permittedArrowDirections = []
-        }
-
-        present(alert, animated: true)
-    }
-
-    private func showReminderPicker(title: String, options: [(String, Int)], key: String) {
-        let current = UserDefaults.standard.integer(forKey: key)
-
-        let alert = UIAlertController(
-            title: "🔔 \(title)",
-            message: "Scegli quando ricevere la notifica:",
-            preferredStyle: .actionSheet
-        )
-
-        for (label, value) in options {
-            let isSelected = (value == current)
-            let prefix = isSelected ? "✅ " : ""
-            alert.addAction(UIAlertAction(title: "\(prefix)\(label)", style: .default) { [weak self] _ in
-                UserDefaults.standard.set(value, forKey: key)
-                print("Appuntamenti: \(title) set to \(value) minutes")
-                // Reschedule notifications with new settings
-                self?.scheduleNotificationsFromPage()
-            })
-        }
-
-        alert.addAction(UIAlertAction(title: "Annulla", style: .cancel, handler: nil))
-
-        if let popover = alert.popoverPresentationController {
-            popover.sourceView = view
-            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
-            popover.permittedArrowDirections = []
-        }
-
-        present(alert, animated: true)
-    }
-
-    // MARK: - Schedule Notifications from Page Appointments
-
-    private func scheduleNotificationsFromPage() {
-        let r1Min = UserDefaults.standard.integer(forKey: "phoneReminder1")
-        let r2Min = UserDefaults.standard.integer(forKey: "phoneReminder2")
-        let reminder1 = r1Min > 0 ? r1Min : 1440  // default 24h
-        let reminder2 = r2Min > 0 ? r2Min : 60    // default 1h
-
-        // Cancel all existing reminders first
-        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
-
-        // Inject JS to read appointments from the page and send to bridge
-        let script = """
-        (function() {
-            var cards = document.querySelectorAll('.appointment-card');
-            var appointments = [];
-            cards.forEach(function(card) {
-                var titleEl = card.querySelector('.card-title');
-                var timeEl = card.querySelector('.card-time');
-                var dateRow = card.closest('.date-row');
-                var dayNum = dateRow ? dateRow.querySelector('.date-day-num') : null;
-                var month = dateRow ? dateRow.querySelector('.date-month') : null;
-
-                if (titleEl && timeEl && dayNum && month) {
-                    var title = titleEl.textContent.trim();
-                    var time = timeEl.textContent.trim();
-                    var day = dayNum.textContent.trim();
-                    var monthText = month.textContent.trim();
-                    appointments.push({title: title, time: time, day: day, month: monthText, id: card.dataset.id || ''});
-                }
-            });
-
-            // Send each appointment for notification scheduling
-            appointments.forEach(function(app) {
-                window.webkit.messageHandlers.scheduleNotification.postMessage({
-                    action: 'scheduleFromPage',
-                    title: app.title,
-                    time: app.time,
-                    day: app.day,
-                    month: app.month,
-                    appointmentId: app.id,
-                    reminder1: \(reminder1),
-                    reminder2: \(reminder2)
-                });
-            });
-        })();
-        """
-        webView.evaluateJavaScript(script, completionHandler: nil)
-    }
-
-    override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
 }

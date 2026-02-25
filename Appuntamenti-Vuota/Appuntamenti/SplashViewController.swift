@@ -4,7 +4,7 @@ class SplashViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(red: 0.247, green: 0.318, blue: 0.710, alpha: 1) // #3F51B5 indigo
+        view.backgroundColor = UIColor(red: 99/255, green: 102/255, blue: 241/255, alpha: 1) // #6366F1
 
         // Logo
         let logoImageView = UIImageView(image: UIImage(named: "AppIcon"))
@@ -55,29 +55,50 @@ class SplashViewController: UIViewController {
             spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
         ])
 
-        // Transition to main after 2 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            self?.transitionToMain()
+        // Try auto-login after 1.5s
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            self?.tryAutoLogin()
         }
     }
 
-    private func transitionToMain() {
-        let targetVC: UIViewController
-
-        if UserDefaults.standard.string(forKey: "appMode") != nil {
-            // Mode already selected, go to main
-            targetVC = MainViewController()
-        } else {
-            // First launch, show mode selection
-            targetVC = ModeSelectionViewController()
+    private func tryAutoLogin() {
+        guard APIService.shared.isConfigured else {
+            showSetup()
+            return
         }
 
-        targetVC.modalTransitionStyle = .crossDissolve
-        targetVC.modalPresentationStyle = .fullScreen
+        APIService.shared.autoLogin { [weak self] success in
+            DispatchQueue.main.async {
+                if success {
+                    self?.showMain()
+                } else {
+                    self?.showSetup()
+                }
+            }
+        }
+    }
+
+    private func showMain() {
+        let mainVC = MainViewController()
+        let nav = UINavigationController(rootViewController: mainVC)
 
         if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
            let window = scene.windows.first {
-            window.rootViewController = targetVC
+            window.rootViewController = nav
+            UIView.transition(with: window, duration: 0.3, options: .transitionCrossDissolve, animations: nil)
+        }
+    }
+
+    private func showSetup() {
+        let mainVC = MainViewController()
+        let setupVC = SetupViewController()
+        setupVC.delegate = mainVC
+
+        let nav = UINavigationController(rootViewController: setupVC)
+
+        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = scene.windows.first {
+            window.rootViewController = nav
             UIView.transition(with: window, duration: 0.3, options: .transitionCrossDissolve, animations: nil)
         }
     }
