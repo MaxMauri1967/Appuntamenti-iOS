@@ -54,6 +54,7 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
             (function() {
                 var style = document.createElement('style');
                 style.textContent = `
+                    /* === Base: prevent horizontal overflow === */
                     html, body {
                         overflow-x: hidden !important;
                         width: 100% !important;
@@ -62,48 +63,151 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
                     }
                     body {
                         padding: 0.75rem !important;
+                        box-sizing: border-box !important;
                     }
                     .container {
                         max-width: 100% !important;
                         overflow-x: hidden !important;
+                        padding: 0 !important;
                     }
-                    .appointment-card,
-                    [class*="card"] {
-                        min-width: 0 !important;
-                        max-width: 100% !important;
-                        width: 100% !important;
-                        word-break: break-word !important;
-                    }
-                    .day-content {
-                        min-width: 0 !important;
-                        max-width: 100% !important;
-                    }
-                    .date-row {
-                        max-width: 100% !important;
-                        overflow: hidden !important;
-                    }
-                    .card-title {
-                        word-break: break-word !important;
-                        overflow-wrap: break-word !important;
-                    }
-                    h1 {
-                        font-size: 1.3rem !important;
-                        white-space: normal !important;
-                    }
+
+                    /* === Header: compact for mobile === */
                     header {
                         flex-wrap: wrap !important;
                         gap: 0.5rem !important;
+                        margin-bottom: 1rem !important;
                     }
-                    .header-actions, .status-filter-group {
-                        flex-wrap: wrap !important;
+                    h1 {
+                        font-size: 1.25rem !important;
                         width: 100% !important;
                     }
-                    .search-box {
+
+                    /* === Filter buttons: wrap and fit === */
+                    .status-filter-container {
+                        flex-wrap: wrap !important;
+                        gap: 0.5rem !important;
+                        margin-bottom: 1rem !important;
+                    }
+                    .status-filter-group {
+                        flex-wrap: wrap !important;
+                        gap: 0.4rem !important;
+                    }
+                    .status-btn {
+                        padding: 0.4rem 0.75rem !important;
+                        font-size: 0.75rem !important;
+                    }
+
+                    /* === Date rows: stack vertically === */
+                    .date-row {
+                        flex-direction: column !important;
+                        padding: 1rem !important;
+                        gap: 0.75rem !important;
+                        max-width: 100% !important;
+                        overflow: hidden !important;
+                    }
+
+                    /* === Date sidebar: horizontal compact bar === */
+                    .date-sidebar {
+                        min-width: 0 !important;
+                        flex-direction: row !important;
+                        align-items: baseline !important;
+                        gap: 0.5rem !important;
+                        padding-right: 0 !important;
+                        padding-bottom: 0.5rem !important;
+                        border-right: none !important;
+                        border-bottom: 2px solid #f1f5f9 !important;
+                    }
+                    .date-day-name {
+                        font-size: 0.7rem !important;
+                        margin-top: 0 !important;
+                        order: 1 !important;
+                    }
+                    .date-day-num {
+                        font-size: 1.5rem !important;
+                        order: 2 !important;
+                    }
+                    .date-month {
+                        font-size: 0.8rem !important;
+                        order: 3 !important;
+                    }
+
+                    /* === Cards: full width, proper sizing === */
+                    .day-content {
+                        flex-direction: column !important;
+                        width: 100% !important;
+                        min-width: 0 !important;
+                        gap: 0.75rem !important;
+                    }
+                    .appointment-card {
                         min-width: 0 !important;
                         max-width: 100% !important;
+                        width: 100% !important;
+                        flex: 1 1 100% !important;
+                        padding: 0.75rem 1rem !important;
+                        box-sizing: border-box !important;
                     }
-                    .stats-bar {
-                        grid-template-columns: repeat(2, 1fr) !important;
+
+                    /* === Card content: readable === */
+                    .card-title {
+                        font-size: 0.95rem !important;
+                        word-break: break-word !important;
+                        overflow-wrap: break-word !important;
+                    }
+                    .card-time {
+                        font-size: 0.8rem !important;
+                        margin-bottom: 0.5rem !important;
+                    }
+                    .card-desc {
+                        font-size: 0.8rem !important;
+                        margin-bottom: 0.75rem !important;
+                    }
+
+                    /* === Card action buttons: horizontal, readable === */
+                    .card-actions {
+                        display: flex !important;
+                        flex-wrap: wrap !important;
+                        gap: 0.5rem !important;
+                        justify-content: flex-start !important;
+                    }
+                    .card-actions .badge,
+                    .card-actions .btn,
+                    .card-actions button,
+                    .card-actions a {
+                        white-space: nowrap !important;
+                        font-size: 0.7rem !important;
+                        padding: 0.25rem 0.5rem !important;
+                        writing-mode: horizontal-tb !important;
+                        text-orientation: mixed !important;
+                        display: inline-flex !important;
+                        align-items: center !important;
+                    }
+
+                    /* === Badges: compact === */
+                    .badge {
+                        white-space: nowrap !important;
+                        font-size: 0.65rem !important;
+                        padding: 0.2rem 0.5rem !important;
+                    }
+
+                    /* === Modal: mobile friendly === */
+                    .modal-content {
+                        width: 95% !important;
+                        max-width: 95% !important;
+                        padding: 1.25rem !important;
+                        margin: 0 auto !important;
+                        max-height: 90vh !important;
+                        overflow-y: auto !important;
+                    }
+
+                    /* === Buttons: general === */
+                    .btn {
+                        padding: 0.5rem 0.75rem !important;
+                        font-size: 0.8rem !important;
+                    }
+
+                    /* === Appointments grid === */
+                    .appointments-grid {
+                        gap: 1rem !important;
                     }
                 `;
                 document.head.appendChild(style);
