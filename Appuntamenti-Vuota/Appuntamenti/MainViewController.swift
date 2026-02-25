@@ -520,6 +520,10 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
                     isAutoLoggingIn = false
                     hideLoadingOverlay()
                 }
+                // Schedule notifications after a short delay to let JS render appointments
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+                    self?.scheduleNotificationsFromPage()
+                }
             }
         }
     }
@@ -534,6 +538,159 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
             webView.load(navigationAction.request)
         }
         return nil
+    }
+
+    // MARK: - Intercept Settings Link
+
+    func webView(_ webView: WKWebView,
+                 decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        if let url = navigationAction.request.url,
+           url.absoluteString.contains("settings.php") {
+            // Intercept settings link — show native settings instead
+            decisionHandler(.cancel)
+            showNotificationSettings()
+            return
+        }
+        decisionHandler(.allow)
+    }
+
+    // MARK: - Native Notification Settings
+
+    private func showNotificationSettings() {
+        let reminder1Key = "phoneReminder1"
+        let reminder2Key = "phoneReminder2"
+        let currentR1 = UserDefaults.standard.integer(forKey: reminder1Key)
+        let currentR2 = UserDefaults.standard.integer(forKey: reminder2Key)
+        let r1Value = currentR1 > 0 ? currentR1 : 1440   // default 24h
+        let r2Value = currentR2 > 0 ? currentR2 : 60     // default 1h
+
+        let r1Options: [(String, Int)] = [
+            ("6 ore prima", 360),
+            ("12 ore prima", 720),
+            ("24 ore prima (1 giorno)", 1440),
+            ("48 ore prima (2 giorni)", 2880)
+        ]
+
+        let r2Options: [(String, Int)] = [
+            ("1 ora prima", 60),
+            ("1 ora e 30 min prima", 90),
+            ("2 ore prima", 120),
+            ("2 ore e 30 min prima", 150),
+            ("3 ore prima", 180),
+            ("4 ore prima", 240),
+            ("5 ore prima", 300),
+            ("6 ore prima", 360)
+        ]
+
+        // Build display strings
+        let r1Current = r1Options.first(where: { $0.1 == r1Value })?.0 ?? "24 ore prima"
+        let r2Current = r2Options.first(where: { $0.1 == r2Value })?.0 ?? "1 ora prima"
+
+        let alert = UIAlertController(
+            title: "⚙️ Impostazioni Notifiche",
+            message: "1° Promemoria: \(r1Current)\n2° Promemoria: \(r2Current)\n\nSeleziona quale promemoria modificare:",
+            preferredStyle: .actionSheet
+        )
+
+        alert.addAction(UIAlertAction(title: "1° Promemoria", style: .default) { [weak self] _ in
+            self?.showReminderPicker(title: "1° Promemoria", options: r1Options, key: reminder1Key)
+        })
+
+        alert.addAction(UIAlertAction(title: "2° Promemoria", style: .default) { [weak self] _ in
+            self?.showReminderPicker(title: "2° Promemoria", options: r2Options, key: reminder2Key)
+        })
+
+        alert.addAction(UIAlertAction(title: "Torna alla pagina", style: .cancel, handler: nil))
+
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+
+        present(alert, animated: true)
+    }
+
+    private func showReminderPicker(title: String, options: [(String, Int)], key: String) {
+        let current = UserDefaults.standard.integer(forKey: key)
+
+        let alert = UIAlertController(
+            title: "🔔 \(title)",
+            message: "Scegli quando ricevere la notifica:",
+            preferredStyle: .actionSheet
+        )
+
+        for (label, value) in options {
+            let isSelected = (value == current)
+            let prefix = isSelected ? "✅ " : ""
+            alert.addAction(UIAlertAction(title: "\(prefix)\(label)", style: .default) { [weak self] _ in
+                UserDefaults.standard.set(value, forKey: key)
+                print("Appuntamenti: \(title) set to \(value) minutes")
+                // Reschedule notifications with new settings
+                self?.scheduleNotificationsFromPage()
+            })
+        }
+
+        alert.addAction(UIAlertAction(title: "Annulla", style: .cancel, handler: nil))
+
+        if let popover = alert.popoverPresentationController {
+            popover.sourceView = view
+            popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+
+        present(alert, animated: true)
+    }
+
+    // MARK: - Schedule Notifications from Page Appointments
+
+    private func scheduleNotificationsFromPage() {
+        let r1Min = UserDefaults.standard.integer(forKey: "phoneReminder1")
+        let r2Min = UserDefaults.standard.integer(forKey: "phoneReminder2")
+        let reminder1 = r1Min > 0 ? r1Min : 1440  // default 24h
+        let reminder2 = r2Min > 0 ? r2Min : 60    // default 1h
+
+        // Cancel all existing reminders first
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+
+        // Inject JS to read appointments from the page and send to bridge
+        let script = """
+        (function() {
+            var cards = document.querySelectorAll('.appointment-card');
+            var appointments = [];
+            cards.forEach(function(card) {
+                var titleEl = card.querySelector('.card-title');
+                var timeEl = card.querySelector('.card-time');
+                var dateRow = card.closest('.date-row');
+                var dayNum = dateRow ? dateRow.querySelector('.date-day-num') : null;
+                var month = dateRow ? dateRow.querySelector('.date-month') : null;
+
+                if (titleEl && timeEl && dayNum && month) {
+                    var title = titleEl.textContent.trim();
+                    var time = timeEl.textContent.trim();
+                    var day = dayNum.textContent.trim();
+                    var monthText = month.textContent.trim();
+                    appointments.push({title: title, time: time, day: day, month: monthText, id: card.dataset.id || ''});
+                }
+            });
+
+            // Send each appointment for notification scheduling
+            appointments.forEach(function(app) {
+                window.webkit.messageHandlers.scheduleNotification.postMessage({
+                    action: 'scheduleFromPage',
+                    title: app.title,
+                    time: app.time,
+                    day: app.day,
+                    month: app.month,
+                    appointmentId: app.id,
+                    reminder1: \(reminder1),
+                    reminder2: \(reminder2)
+                });
+            });
+        })();
+        """
+        webView.evaluateJavaScript(script, completionHandler: nil)
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
