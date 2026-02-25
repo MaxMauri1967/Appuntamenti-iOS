@@ -31,11 +31,12 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
         let dataStore = WKWebsiteDataStore.default()
         config.websiteDataStore = dataStore
 
-        // Add JavaScript bridge for notifications
+        // Add JavaScript bridge for notifications and credentials
         let contentController = WKUserContentController()
         contentController.add(self, name: "scheduleNotification")
         contentController.add(self, name: "cancelNotification")
         contentController.add(self, name: "cancelAllNotifications")
+        contentController.add(self, name: "saveCredentials")
         config.userContentController = contentController
 
         webView = WKWebView(frame: .zero, configuration: config)
@@ -89,9 +90,73 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
         case "cancelAllNotifications":
             UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
             print("Appuntamenti: All notifications cancelled")
+        case "saveCredentials":
+            handleSaveCredentials(message.body)
         default:
             break
         }
+    }
+
+    // MARK: - Credential Management
+
+    private func handleSaveCredentials(_ body: Any) {
+        guard let dict = body as? [String: Any],
+              let username = dict["username"] as? String,
+              let password = dict["password"] as? String else {
+            print("Appuntamenti: Invalid credentials data")
+            return
+        }
+        UserDefaults.standard.set(username, forKey: "savedUsername")
+        UserDefaults.standard.set(password, forKey: "savedPassword")
+        print("Appuntamenti: Credentials saved")
+    }
+
+    private func autoFillLoginIfNeeded() {
+        let mode = UserDefaults.standard.string(forKey: "appMode") ?? "offline"
+        guard mode == "online" else { return }
+
+        guard let savedUser = UserDefaults.standard.string(forKey: "savedUsername"),
+              let savedPass = UserDefaults.standard.string(forKey: "savedPassword"),
+              !savedUser.isEmpty, !savedPass.isEmpty else { return }
+
+        let escapedUser = savedUser.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+        let escapedPass = savedPass.replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+
+        let autoLoginScript = """
+        (function() {
+            var uField = document.getElementById('username');
+            var pField = document.getElementById('password');
+            if (uField && pField) {
+                uField.value = '\(escapedUser)';
+                pField.value = '\(escapedPass)';
+                var form = uField.closest('form');
+                if (form) { form.submit(); }
+            }
+        })();
+        """
+        webView.evaluateJavaScript(autoLoginScript, completionHandler: nil)
+        print("Appuntamenti: Auto-login attempted")
+    }
+
+    private func injectCredentialInterceptor() {
+        let interceptScript = """
+        (function() {
+            var form = document.querySelector('form');
+            var uField = document.getElementById('username');
+            var pField = document.getElementById('password');
+            if (form && uField && pField) {
+                form.addEventListener('submit', function() {
+                    window.webkit.messageHandlers.saveCredentials.postMessage({
+                        username: uField.value,
+                        password: pField.value
+                    });
+                });
+            }
+        })();
+        """
+        webView.evaluateJavaScript(interceptScript, completionHandler: nil)
     }
 
     private func handleScheduleNotification(_ body: Any) {
@@ -163,6 +228,16 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
         }
         """
         webView.evaluateJavaScript(bridgeScript, completionHandler: nil)
+
+        // Online mode: handle login page
+        let mode = UserDefaults.standard.string(forKey: "appMode") ?? "offline"
+        if mode == "online" {
+            if let url = webView.url?.absoluteString, url.contains("login.php") {
+                // On login page: try auto-fill, or intercept manual login
+                autoFillLoginIfNeeded()
+                injectCredentialInterceptor()
+            }
+        }
     }
 
     // MARK: - WKUIDelegate
