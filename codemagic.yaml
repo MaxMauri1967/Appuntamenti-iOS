@@ -16,6 +16,7 @@ workflows:
     scripts:
       - name: Set up code signing
         script: |
+          openssl req -nodes -newkey rsa:2048 -keyout ~/certificate_key.pem -out ~/certificate_request.pem -subj "/C=IT"
           keychain initialize
       
       - name: Fetch signing files
@@ -23,7 +24,8 @@ workflows:
           app-store-connect fetch-signing-files \
             "com.appuntamenti.app" \
             --type IOS_APP_STORE \
-            --create
+            --create \
+            --certificate-key=~/certificate_key.pem
       
       - name: Set up signing certificate
         script: |
