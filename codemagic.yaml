@@ -8,9 +8,6 @@ workflows:
       app_store_connect: SportBody
 
     environment:
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.appuntamenti.app
       vars:
         XCODE_SCHEME: "Appuntamenti"
       xcode: latest
