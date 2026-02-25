@@ -14,6 +14,7 @@ class MainViewController: UIViewController, UITableViewDataSource, UITableViewDe
 
     private let tableView = UITableView(frame: .zero, style: .grouped)
     private let refreshControl = UIRefreshControl()
+    private let yearButton = UIButton(type: .system)
     private let statusSegment = UISegmentedControl(items: ["Tutti", "In attesa", "Completati"])
     private let emptyLabel = UILabel()
     private let loadingSpinner = UIActivityIndicatorView(style: .large)
@@ -32,6 +33,7 @@ class MainViewController: UIViewController, UITableViewDataSource, UITableViewDe
         view.backgroundColor = bgColor
 
         setupNavigation()
+        setupYearSelector()
         setupStatusFilter()
         setupTableView()
         setupEmptyState()
@@ -40,6 +42,12 @@ class MainViewController: UIViewController, UITableViewDataSource, UITableViewDe
         // Default filter to "In attesa"
         statusSegment.selectedSegmentIndex = 1
 
+        // Default to current year
+        let currentYear = String(Calendar.current.component(.year, from: Date()))
+        currentSheet = currentYear
+        updateYearButtonTitle(currentYear)
+
+        loadSheets()
         loadData()
     }
 
@@ -65,6 +73,49 @@ class MainViewController: UIViewController, UITableViewDataSource, UITableViewDe
         navigationItem.rightBarButtonItem = addBtn
     }
 
+    // MARK: - Year Selector
+
+    private func setupYearSelector() {
+        yearButton.setTitle("📅 2026 ▾", for: .normal)
+        yearButton.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
+        yearButton.setTitleColor(primaryColor, for: .normal)
+        yearButton.backgroundColor = primaryColor.withAlphaComponent(0.1)
+        yearButton.layer.cornerRadius = 16
+        yearButton.contentEdgeInsets = UIEdgeInsets(top: 6, left: 16, bottom: 6, right: 16)
+        yearButton.translatesAutoresizingMaskIntoConstraints = false
+        yearButton.addTarget(self, action: #selector(yearTapped), for: .touchUpInside)
+        view.addSubview(yearButton)
+
+        NSLayoutConstraint.activate([
+            yearButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            yearButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            yearButton.heightAnchor.constraint(equalToConstant: 32),
+        ])
+    }
+
+    private func updateYearButtonTitle(_ year: String) {
+        yearButton.setTitle("📅 \(year) ▾", for: .normal)
+    }
+
+    private func loadSheets() {
+        APIService.shared.fetchSheets { [weak self] result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let years):
+                    self?.sheets = years.sorted()
+                    // Add current year if not present
+                    let currentYear = String(Calendar.current.component(.year, from: Date()))
+                    if !years.contains(currentYear) {
+                        self?.sheets.append(currentYear)
+                        self?.sheets.sort()
+                    }
+                case .failure:
+                    break
+                }
+            }
+        }
+    }
+
     // MARK: - Status Filter
 
     private func setupStatusFilter() {
@@ -76,7 +127,7 @@ class MainViewController: UIViewController, UITableViewDataSource, UITableViewDe
         view.addSubview(statusSegment)
 
         NSLayoutConstraint.activate([
-            statusSegment.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            statusSegment.topAnchor.constraint(equalTo: yearButton.bottomAnchor, constant: 10),
             statusSegment.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             statusSegment.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
         ])
@@ -266,6 +317,26 @@ class MainViewController: UIViewController, UITableViewDataSource, UITableViewDe
         formVC.delegate = self
         let nav = UINavigationController(rootViewController: formVC)
         present(nav, animated: true)
+    }
+
+    @objc private func yearTapped() {
+        let alert = UIAlertController(title: "Seleziona Anno", message: nil, preferredStyle: .actionSheet)
+
+        for year in sheets {
+            let action = UIAlertAction(title: year, style: .default) { [weak self] _ in
+                self?.currentSheet = year
+                self?.updateYearButtonTitle(year)
+                self?.loadData()
+            }
+            // Highlight current selection
+            if year == currentSheet {
+                action.setValue(true, forKey: "checked")
+            }
+            alert.addAction(action)
+        }
+
+        alert.addAction(UIAlertAction(title: "Annulla", style: .cancel))
+        present(alert, animated: true)
     }
 
     @objc private func settingsTapped() {

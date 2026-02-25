@@ -219,9 +219,9 @@ class SetupViewController: UIViewController {
                     self?.showStatus("✅ Connesso come \(displayName)", isError: false)
                     // Request notification permission
                     NotificationManager.shared.requestPermission { _ in }
-                    // Proceed after short delay
+                    // Transition to main screen after short delay
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                        self?.delegate?.setupDidComplete()
+                        self?.transitionToMain()
                     }
                 case .failure(let error):
                     self?.showStatus("❌ \(error.localizedDescription)", isError: true)
@@ -249,6 +249,17 @@ class SetupViewController: UIViewController {
         statusLabel.textColor = isError
             ? UIColor(red: 153/255, green: 27/255, blue: 27/255, alpha: 1)
             : UIColor(red: 100/255, green: 116/255, blue: 139/255, alpha: 1)
+    }
+
+    private func transitionToMain() {
+        let mainVC = MainViewController()
+        let nav = UINavigationController(rootViewController: mainVC)
+
+        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let window = scene.windows.first {
+            window.rootViewController = nav
+            UIView.transition(with: window, duration: 0.3, options: .transitionCrossDissolve, animations: nil)
+        }
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle { .darkContent }
