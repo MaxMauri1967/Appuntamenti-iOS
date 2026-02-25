@@ -67,13 +67,14 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
                     }
                     .container {
                         max-width: 100% !important;
-                        overflow-x: hidden !important;
                         padding: 0 !important;
                     }
 
-                    /* === Header: compact for mobile === */
+                    /* === Header: stack vertically === */
                     header {
-                        flex-wrap: wrap !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        align-items: stretch !important;
                         gap: 0.5rem !important;
                         margin-bottom: 1rem !important;
                     }
@@ -82,19 +83,75 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
                         width: 100% !important;
                     }
 
-                    /* === Filter buttons: wrap and fit === */
-                    .status-filter-container {
+                    /* === Header actions: wrap row === */
+                    .header-actions {
+                        display: flex !important;
                         flex-wrap: wrap !important;
                         gap: 0.5rem !important;
-                        margin-bottom: 1rem !important;
+                        width: 100% !important;
+                        align-items: center !important;
                     }
+
+                    /* === Sheet filter (year) === */
+                    #sheetFilter {
+                        width: auto !important;
+                        min-width: 80px !important;
+                        max-width: 100px !important;
+                        flex: 0 0 auto !important;
+                        position: relative !important;
+                        z-index: 2 !important;
+                    }
+
+                    /* === Status filter buttons === */
                     .status-filter-group {
+                        display: flex !important;
                         flex-wrap: wrap !important;
-                        gap: 0.4rem !important;
+                        gap: 0.25rem !important;
+                        position: relative !important;
+                        z-index: 2 !important;
                     }
                     .status-btn {
-                        padding: 0.4rem 0.75rem !important;
-                        font-size: 0.75rem !important;
+                        padding: 0.5rem 0.85rem !important;
+                        font-size: 0.8rem !important;
+                        position: relative !important;
+                        z-index: 2 !important;
+                        -webkit-tap-highlight-color: rgba(0,0,0,0.1) !important;
+                        cursor: pointer !important;
+                    }
+
+                    /* === Header buttons: own row, full width === */
+                    .header-btns {
+                        display: flex !important;
+                        flex-wrap: wrap !important;
+                        gap: 0.5rem !important;
+                        width: 100% !important;
+                    }
+                    .header-btns > * {
+                        flex: 1 1 auto !important;
+                        min-width: 0 !important;
+                        text-align: center !important;
+                        justify-content: center !important;
+                    }
+
+                    /* === Add button: always visible === */
+                    #addBtn {
+                        display: inline-flex !important;
+                        visibility: visible !important;
+                        opacity: 1 !important;
+                        white-space: nowrap !important;
+                        position: relative !important;
+                        z-index: 2 !important;
+                    }
+
+                    /* === Hide logout button in iOS app === */
+                    .logout-btn {
+                        display: none !important;
+                    }
+
+                    /* === Buttons: general === */
+                    .btn {
+                        padding: 0.5rem 0.75rem !important;
+                        font-size: 0.8rem !important;
                     }
 
                     /* === Date rows: stack vertically === */
@@ -131,7 +188,7 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
                         order: 3 !important;
                     }
 
-                    /* === Cards: full width, proper sizing === */
+                    /* === Cards: full width === */
                     .day-content {
                         flex-direction: column !important;
                         width: 100% !important;
@@ -162,7 +219,7 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
                         margin-bottom: 0.75rem !important;
                     }
 
-                    /* === Card action buttons: horizontal, readable === */
+                    /* === Card actions === */
                     .card-actions {
                         display: flex !important;
                         flex-wrap: wrap !important;
@@ -182,7 +239,7 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
                         align-items: center !important;
                     }
 
-                    /* === Badges: compact === */
+                    /* === Badges === */
                     .badge {
                         white-space: nowrap !important;
                         font-size: 0.65rem !important;
@@ -197,51 +254,6 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
                         margin: 0 auto !important;
                         max-height: 90vh !important;
                         overflow-y: auto !important;
-                    }
-
-                    /* === Buttons: general === */
-                    .btn {
-                        padding: 0.5rem 0.75rem !important;
-                        font-size: 0.8rem !important;
-                    }
-
-                    /* === Add button: always visible === */
-                    #addBtn, .btn-primary {
-                        display: inline-flex !important;
-                        visibility: visible !important;
-                        opacity: 1 !important;
-                        white-space: nowrap !important;
-                    }
-
-                    /* === Header actions: wrap properly === */
-                    .header-actions {
-                        display: flex !important;
-                        flex-wrap: wrap !important;
-                        gap: 0.5rem !important;
-                        width: 100% !important;
-                        align-items: center !important;
-                    }
-                    .search-box {
-                        min-width: 0 !important;
-                        flex: 1 1 100% !important;
-                    }
-                    .filter-select {
-                        flex: 0 0 auto !important;
-                    }
-
-                    /* === Settings panel: mobile friendly === */
-                    .settings-panel {
-                        width: 100% !important;
-                    }
-                    .settings-content {
-                        padding: 0.75rem !important;
-                    }
-                    .settings-row {
-                        flex-wrap: wrap !important;
-                        gap: 0.5rem !important;
-                    }
-                    .settings-row select {
-                        width: 100% !important;
                     }
 
                     /* === Appointments grid === */
