@@ -9,7 +9,6 @@ workflows:
         distribution_type: app_store
         bundle_identifier: com.appuntamenti.app
       vars:
-        XCODE_WORKSPACE: "Appuntamenti-Vuota/Appuntamenti.xcodeproj"
         XCODE_SCHEME: "Appuntamenti"
       xcode: latest
       cocoapods: default
@@ -48,6 +47,8 @@ workflows:
 
     publishing:
       app_store_connect:
-        auth: integration
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
         submit_to_testflight: true
         submit_to_app_store: false
