@@ -34,12 +34,19 @@
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
+html,
+body {
+    overflow-x: hidden;
+    width: 100%;
+}
+
 body {
     background: var(--bg);
     color: var(--text-main);
     line-height: 1.6;
     min-height: 100vh;
     padding: 1rem;
+    -webkit-text-size-adjust: 100%;
 }
 
 @media (min-width: 768px) {
@@ -52,6 +59,7 @@ body {
     max-width: 1280px;
     margin: 0 auto;
     width: 100%;
+    overflow-x: hidden;
 }
 
 /* ─── Header ─── */
@@ -489,6 +497,10 @@ h1 {
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.appointment-card {
+    max-width: 100%;
+}
+
 @media (min-width: 640px) {
     .appointment-card {
         min-width: 280px;
@@ -566,6 +578,12 @@ h1 {
 
 .appointment-card:hover .card-actions {
     opacity: 1;
+}
+
+@media (hover: none) {
+    .card-actions {
+        opacity: 1;
+    }
 }
 
 .btn-action {
