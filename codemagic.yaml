@@ -8,6 +8,8 @@ workflows:
       app_store_connect: SportBody
 
     environment:
+      groups:
+        - app_credentials
       vars:
         XCODE_SCHEME: "Appuntamenti"
       xcode: latest
@@ -16,12 +18,10 @@ workflows:
     scripts:
       - name: Set up code signing
         script: |
-          openssl req -nodes -newkey rsa:2048 -keyout $HOME/certificate_key.pem -out $HOME/certificate_request.pem -subj "/C=IT"
           keychain initialize
       
       - name: Fetch signing files
         script: |
-          export CERTIFICATE_PRIVATE_KEY=$(cat $HOME/certificate_key.pem)
           app-store-connect fetch-signing-files \
             "com.appuntamenti.app" \
             --type IOS_APP_STORE \
