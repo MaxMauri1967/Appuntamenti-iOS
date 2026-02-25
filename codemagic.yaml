@@ -6,7 +6,7 @@ workflows:
     
     environment:
       groups:
-        - appstore
+        - app_credentials
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.appuntamenti.app
