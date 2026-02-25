@@ -5,6 +5,8 @@ import UserNotifications
 class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
 
     private var webView: WKWebView!
+    private var loadingOverlay: UIView!
+    private var isAutoLoggingIn = false
 
     // MARK: - Lifecycle
 
@@ -12,9 +14,17 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
         super.viewDidLoad()
         view.backgroundColor = UIColor(red: 0.247, green: 0.318, blue: 0.710, alpha: 1)
         setupWebView()
+        setupLoadingOverlay()
 
         let mode = UserDefaults.standard.string(forKey: "appMode") ?? "offline"
         if mode == "online" {
+            // Check if we have saved credentials — if so, hide the WebView during auto-login
+            let savedUser = UserDefaults.standard.string(forKey: "savedUsername") ?? ""
+            let savedPass = UserDefaults.standard.string(forKey: "savedPassword") ?? ""
+            if !savedUser.isEmpty && !savedPass.isEmpty {
+                isAutoLoggingIn = true
+                showLoadingOverlay()
+            }
             loadOnlinePage()
         } else {
             loadLocalPage()
@@ -37,6 +47,22 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
         contentController.add(self, name: "cancelNotification")
         contentController.add(self, name: "cancelAllNotifications")
         contentController.add(self, name: "saveCredentials")
+
+        // Inject viewport-forcing script at document start (before CSS/DOM renders)
+        let viewportScript = WKUserScript(
+            source: """
+            var meta = document.createElement('meta');
+            meta.name = 'viewport';
+            meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+            document.getElementsByTagName('head')[0].appendChild(meta);
+            document.documentElement.style.overflowX = 'hidden';
+            document.documentElement.style.width = '100%';
+            """,
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: true
+        )
+        contentController.addUserScript(viewportScript)
+
         config.userContentController = contentController
 
         webView = WKWebView(frame: .zero, configuration: config)
@@ -47,15 +73,67 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
         webView.scrollView.backgroundColor = .clear
         webView.scrollView.bounces = true
         webView.scrollView.showsHorizontalScrollIndicator = false
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.translatesAutoresizingMaskIntoConstraints = false
 
         view.addSubview(webView)
         NSLayoutConstraint.activate([
             webView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            webView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
-            webView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+            webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
+    }
+
+    // MARK: - Loading Overlay (hides login flash)
+
+    private func setupLoadingOverlay() {
+        loadingOverlay = UIView()
+        loadingOverlay.backgroundColor = UIColor(red: 0.247, green: 0.318, blue: 0.710, alpha: 1)
+        loadingOverlay.translatesAutoresizingMaskIntoConstraints = false
+        loadingOverlay.isHidden = true
+
+        let spinner = UIActivityIndicatorView(style: .large)
+        spinner.color = .white
+        spinner.startAnimating()
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+
+        let label = UILabel()
+        label.text = "Caricamento..."
+        label.textColor = .white
+        label.font = UIFont.systemFont(ofSize: 16, weight: .medium)
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        loadingOverlay.addSubview(spinner)
+        loadingOverlay.addSubview(label)
+        view.addSubview(loadingOverlay)
+
+        NSLayoutConstraint.activate([
+            loadingOverlay.topAnchor.constraint(equalTo: view.topAnchor),
+            loadingOverlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            loadingOverlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            loadingOverlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            spinner.centerXAnchor.constraint(equalTo: loadingOverlay.centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: loadingOverlay.centerYAnchor, constant: -20),
+
+            label.centerXAnchor.constraint(equalTo: loadingOverlay.centerXAnchor),
+            label.topAnchor.constraint(equalTo: spinner.bottomAnchor, constant: 16),
+        ])
+    }
+
+    private func showLoadingOverlay() {
+        loadingOverlay.isHidden = false
+        view.bringSubviewToFront(loadingOverlay)
+    }
+
+    private func hideLoadingOverlay() {
+        UIView.animate(withDuration: 0.3) {
+            self.loadingOverlay.alpha = 0
+        } completion: { _ in
+            self.loadingOverlay.isHidden = true
+            self.loadingOverlay.alpha = 1
+        }
     }
 
     // MARK: - Load Local Page
@@ -119,7 +197,12 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
 
         guard let savedUser = UserDefaults.standard.string(forKey: "savedUsername"),
               let savedPass = UserDefaults.standard.string(forKey: "savedPassword"),
-              !savedUser.isEmpty, !savedPass.isEmpty else { return }
+              !savedUser.isEmpty, !savedPass.isEmpty else {
+            // No saved credentials — show the login page
+            hideLoadingOverlay()
+            isAutoLoggingIn = false
+            return
+        }
 
         let escapedUser = savedUser.replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
@@ -211,6 +294,17 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
     // MARK: - WKNavigationDelegate
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        // Force viewport width via JS after every page load
+        let forceWidthScript = """
+        (function() {
+            document.documentElement.style.overflowX = 'hidden';
+            document.body.style.overflowX = 'hidden';
+            document.body.style.width = '100%';
+            document.body.style.maxWidth = '100vw';
+        })();
+        """
+        webView.evaluateJavaScript(forceWidthScript, completionHandler: nil)
+
         // Inject the iOS notification bridge into the page
         let bridgeScript = """
         if (!window.AndroidBridge) {
@@ -234,10 +328,16 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
         // Online mode: handle login page
         let mode = UserDefaults.standard.string(forKey: "appMode") ?? "offline"
         if mode == "online" {
-            if let url = webView.url?.absoluteString, url.contains("login.php") {
+            if let url = webView.url?.absoluteString, url.contains("login.php") || url.contains("auth.php") {
                 // On login page: try auto-fill, or intercept manual login
                 autoFillLoginIfNeeded()
                 injectCredentialInterceptor()
+            } else {
+                // We navigated away from login (auto-login succeeded or user is already logged in)
+                if isAutoLoggingIn {
+                    isAutoLoggingIn = false
+                    hideLoadingOverlay()
+                }
             }
         }
     }
