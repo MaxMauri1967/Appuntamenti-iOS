@@ -21,11 +21,11 @@ workflows:
       
       - name: Fetch signing files
         script: |
+          export CERTIFICATE_PRIVATE_KEY=$(cat $HOME/certificate_key.pem)
           app-store-connect fetch-signing-files \
             "com.appuntamenti.app" \
             --type IOS_APP_STORE \
-            --create \
-            --certificate-key "$HOME/certificate_key.pem"
+            --create
       
       - name: Set up signing certificate
         script: |
