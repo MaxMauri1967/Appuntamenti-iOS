@@ -48,20 +48,71 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
         contentController.add(self, name: "cancelAllNotifications")
         contentController.add(self, name: "saveCredentials")
 
-        // Inject viewport-forcing script at document start (before CSS/DOM renders)
-        let viewportScript = WKUserScript(
+        // Inject mobile-friendly CSS overrides to fix server CSS on narrow screens
+        let mobileCSS = WKUserScript(
             source: """
-            var meta = document.createElement('meta');
-            meta.name = 'viewport';
-            meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
-            document.getElementsByTagName('head')[0].appendChild(meta);
-            document.documentElement.style.overflowX = 'hidden';
-            document.documentElement.style.width = '100%';
+            (function() {
+                var style = document.createElement('style');
+                style.textContent = `
+                    html, body {
+                        overflow-x: hidden !important;
+                        width: 100% !important;
+                        max-width: 100vw !important;
+                        -webkit-text-size-adjust: 100% !important;
+                    }
+                    body {
+                        padding: 0.75rem !important;
+                    }
+                    .container {
+                        max-width: 100% !important;
+                        overflow-x: hidden !important;
+                    }
+                    .appointment-card,
+                    [class*="card"] {
+                        min-width: 0 !important;
+                        max-width: 100% !important;
+                        width: 100% !important;
+                        word-break: break-word !important;
+                    }
+                    .day-content {
+                        min-width: 0 !important;
+                        max-width: 100% !important;
+                    }
+                    .date-row {
+                        max-width: 100% !important;
+                        overflow: hidden !important;
+                    }
+                    .card-title {
+                        word-break: break-word !important;
+                        overflow-wrap: break-word !important;
+                    }
+                    h1 {
+                        font-size: 1.3rem !important;
+                        white-space: normal !important;
+                    }
+                    header {
+                        flex-wrap: wrap !important;
+                        gap: 0.5rem !important;
+                    }
+                    .header-actions, .status-filter-group {
+                        flex-wrap: wrap !important;
+                        width: 100% !important;
+                    }
+                    .search-box {
+                        min-width: 0 !important;
+                        max-width: 100% !important;
+                    }
+                    .stats-bar {
+                        grid-template-columns: repeat(2, 1fr) !important;
+                    }
+                `;
+                document.head.appendChild(style);
+            })();
             """,
             injectionTime: .atDocumentEnd,
             forMainFrameOnly: true
         )
-        contentController.addUserScript(viewportScript)
+        contentController.addUserScript(mobileCSS)
 
         config.userContentController = contentController
 
@@ -73,7 +124,6 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
         webView.scrollView.backgroundColor = .clear
         webView.scrollView.bounces = true
         webView.scrollView.showsHorizontalScrollIndicator = false
-        webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.translatesAutoresizingMaskIntoConstraints = false
 
         view.addSubview(webView)
@@ -294,17 +344,6 @@ class MainViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, 
     // MARK: - WKNavigationDelegate
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        // Force viewport width via JS after every page load
-        let forceWidthScript = """
-        (function() {
-            document.documentElement.style.overflowX = 'hidden';
-            document.body.style.overflowX = 'hidden';
-            document.body.style.width = '100%';
-            document.body.style.maxWidth = '100vw';
-        })();
-        """
-        webView.evaluateJavaScript(forceWidthScript, completionHandler: nil)
-
         // Inject the iOS notification bridge into the page
         let bridgeScript = """
         if (!window.AndroidBridge) {
